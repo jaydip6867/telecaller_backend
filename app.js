@@ -8,7 +8,7 @@ const connectDB = require("./config/db");
 
 const app = express();
 app.use(cors({
-  origin: "http://localhost:3000", // React frontend
+  origin: "https://telecaller-six.vercel.app/", // React frontend
   credentials: true
 }));
 
