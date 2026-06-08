@@ -10,14 +10,15 @@ const app = express();
 app.use((req, res, next) => {
   res.header(
     "Access-Control-Allow-Origin",
-    "https://telecaller-six.vercel.app"
+    "https://telecaller-six.vercel.app",
+    "http://localhost:3000"
   );
   res.header("Access-Control-Allow-Credentials", "true");
   next();
 });
 
 app.use(cors({
-  origin: "https://telecaller-six.vercel.app",
+  origin: ["https://telecaller-six.vercel.app", "http://localhost:3000"],
   credentials: true
 }));
 
