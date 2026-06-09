@@ -95,6 +95,53 @@ exports.getSingleInquiry = async (req, res) => {
 };
 
 // export to Excel
+// exports.importExcel = async (req, res) => {
+//     try {
+//         const XLSX = require("xlsx");
+//         const Inquiry = require("../models/Inquiry");
+
+//         const workbook = XLSX.readFile(req.file.path);
+//         const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+//         const data = XLSX.utils.sheet_to_json(sheet);
+
+//         const inquiries = data.map(item => {
+
+//             // notes string ne array ma convert karo
+//             let notesArray = [];
+
+//             if (item.notes) {
+//                 notesArray = item.notes.split("|").map(n => ({
+//                     note: n.trim(),
+//                     addedBy: req.user.id // login user
+//                 }));
+//             }
+
+//             return {
+//                 name: item.name,
+//                 std: item.std,
+//                 mobileNumber: item.mobileNumber,
+//                 schoolCollege: item.schoolCollege,
+
+//                 status: item.status || "pending",
+//                 notes: notesArray
+//             };
+//         });
+
+//         await Inquiry.insertMany(inquiries);
+
+//         res.json({
+//             message: "Excel imported successfully",
+//             count: inquiries.length
+//         });
+
+//     } catch (err) {
+//         res.status(500).json({
+//             message: err.message
+//         });
+//     }
+// };
+
 exports.importExcel = async (req, res) => {
     try {
         const XLSX = require("xlsx");
@@ -105,34 +152,63 @@ exports.importExcel = async (req, res) => {
 
         const data = XLSX.utils.sheet_to_json(sheet);
 
-        const inquiries = data.map(item => {
+        // 🔥 Normalize function
+        const normalizeMobile = (num) => {
+            if (!num) return "";
+            return String(num)
+                .replace(/\D/g, "")   // only digits
+                .trim();
+        };
 
-            // notes string ne array ma convert karo
-            let notesArray = [];
+        // Step 1: normalize Excel numbers
+        const mobileNumbers = data
+            .map(item => normalizeMobile(item.mobileNumber))
+            .filter(Boolean);
 
-            if (item.notes) {
-                notesArray = item.notes.split("|").map(n => ({
-                    note: n.trim(),
-                    addedBy: req.user.id // login user
-                }));
-            }
+        // Step 2: DB existing numbers also normalize
+        const existingInquiries = await Inquiry.find(
+            {},
+            { mobileNumber: 1 }
+        );
 
-            return {
-                name: item.name,
-                std: item.std,
-                mobileNumber: item.mobileNumber,
-                schoolCollege: item.schoolCollege,
+        const existingNumbersSet = new Set(
+            existingInquiries.map(i => normalizeMobile(i.mobileNumber))
+        );
 
-                status: item.status || "pending",
-                notes: notesArray
-            };
-        });
+        // Step 3: filter duplicates correctly
+        const inquiries = data
+            .filter(item => {
+                const mobile = normalizeMobile(item.mobileNumber);
+                return mobile && !existingNumbersSet.has(mobile);
+            })
+            .map(item => {
+                let notesArray = [];
 
-        await Inquiry.insertMany(inquiries);
+                if (item.notes) {
+                    notesArray = item.notes.split("|").map(n => ({
+                        note: n.trim(),
+                        addedBy: req.user.id
+                    }));
+                }
+
+                return {
+                    name: item.name,
+                    std: item.std,
+                    mobileNumber: normalizeMobile(item.mobileNumber),
+                    schoolCollege: item.schoolCollege,
+                    status: item.status || "pending",
+                    notes: notesArray
+                };
+            });
+
+        if (inquiries.length > 0) {
+            await Inquiry.insertMany(inquiries);
+        }
 
         res.json({
-            message: "Excel imported successfully",
-            count: inquiries.length
+            message: "Excel imported successfully (duplicates skipped)",
+            inserted: inquiries.length,
+            skipped: data.length - inquiries.length
         });
 
     } catch (err) {
