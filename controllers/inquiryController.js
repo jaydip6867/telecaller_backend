@@ -1,5 +1,4 @@
 const Inquiry = require("../models/Inquiry");
-const XLSX = require("xlsx");
 
 // Add Inquiry
 exports.createInquiry = async (req, res) => {
@@ -144,8 +143,8 @@ exports.getSingleInquiry = async (req, res) => {
 
 exports.importExcel = async (req, res) => {
     try {
+        const fs = require("fs");
         const XLSX = require("xlsx");
-        const Inquiry = require("../models/Inquiry");
 
         const workbook = XLSX.readFile(req.file.path);
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -203,8 +202,6 @@ exports.importExcel = async (req, res) => {
 
         if (inquiries.length > 0) {
             await Inquiry.insertMany(inquiries);
-            // cleanup
-            fs.unlinkSync(req.file.path);
         }
 
         res.json({
@@ -217,5 +214,9 @@ exports.importExcel = async (req, res) => {
         res.status(500).json({
             message: err.message
         });
+    } finally {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
     }
 };
