@@ -38,7 +38,8 @@ const inquirySchema = new mongoose.Schema(
 
     tution: {
       type: String,
-      required: true
+      required: true,
+      default: null
     },
 
     followUpDate: {
