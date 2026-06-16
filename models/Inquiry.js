@@ -38,7 +38,6 @@ const inquirySchema = new mongoose.Schema(
 
     tution: {
       type: String,
-      required: true,
       default: null
     },
 
