@@ -1,4 +1,5 @@
 const Inquiry = require("../models/Inquiry");
+const User = require("../models/User");
 
 // Add Inquiry
 exports.createInquiry = async (req, res) => {
@@ -189,6 +190,258 @@ exports.getSingleInquiry = async (req, res) => {
     }
 };
 
+// Get Today's Follow-ups
+exports.getTodayFollowups = async (req, res) => {
+    try {
+        const today = new Date().toISOString().split("T")[0];
+
+        const inquiries = await Inquiry.find({
+            followUpDate: {
+                $gte: new Date(today + "T00:00:00.000Z"),
+                $lte: new Date(today + "T23:59:59.999Z")
+            }
+        }).sort({ followUpDate: 1 });
+
+        res.json(inquiries);
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message
+        });
+    }
+};
+
+// 📊 Today Notes Count per User
+exports.getTodayUserNoteCount = async (req, res) => {
+    try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const result = await Inquiry.aggregate([
+            // flatten notes array
+            { $unwind: "$notes" },
+
+            // filter today's notes only
+            {
+                $match: {
+                    "notes.createdAt": {
+                        $gte: todayStart,
+                        $lte: todayEnd
+                    }
+                }
+            },
+
+            // group by addedBy (user)
+            {
+                $group: {
+                    _id: "$notes.addedBy",
+                    totalNotesToday: { $sum: 1 }
+                }
+            },
+
+            // join user data
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "_id",
+                    foreignField: "_id",
+                    as: "user"
+                }
+            },
+
+            { $unwind: "$user" },
+
+            // final format
+            {
+                $project: {
+                    _id: 0,
+                    userId: "$user._id",
+                    name: "$user.name",
+                    email: "$user.email",
+                    role: "$user.role",
+                    totalNotesToday: 1
+                }
+            },
+
+            // sort highest first
+            {
+                $sort: { totalNotesToday: -1 }
+            }
+        ]);
+
+        res.json(result);
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message
+        });
+    }
+};
+
+// 👤 Today Follow-ups grouped by User
+exports.getTodayFollowupsByUser = async (req, res) => {
+    try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const result = await Inquiry.aggregate([
+            // 📅 filter only today's followups
+            {
+                $match: {
+                    followUpDate: {
+                        $gte: todayStart,
+                        $lte: todayEnd
+                    }
+                }
+            },
+
+            // 👤 group by user who added notes
+            {
+                $unwind: "$notes"
+            },
+
+            {
+                $match: {
+                    "notes.createdAt": {
+                        $gte: todayStart,
+                        $lte: todayEnd
+                    }
+                }
+            },
+
+            {
+                $group: {
+                    _id: "$notes.addedBy",
+                    inquiries: {
+                        $push: {
+                            inquiryId: "$_id",
+                            name: "$name",
+                            mobileNumber: "$mobileNumber",
+                            schoolCollege: "$schoolCollege",
+                            followUpDate: "$followUpDate",
+                            status: "$status",
+                            lastNote: "$notes.note",
+                            noteDate: "$notes.createdAt"
+                        }
+                    }
+                }
+            },
+
+            // 👤 user details join
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "_id",
+                    foreignField: "_id",
+                    as: "user"
+                }
+            },
+
+            {
+                $unwind: "$user"
+            },
+
+            // 🎯 final format
+            {
+                $project: {
+                    _id: 0,
+                    userId: "$user._id",
+                    name: "$user.name",
+                    email: "$user.email",
+                    role: "$user.role",
+                    totalFollowups: { $size: "$inquiries" },
+                    inquiries: 1
+                }
+            },
+
+            {
+                $sort: { totalFollowups: -1 }
+            }
+        ]);
+
+        res.json(result);
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message
+        });
+    }
+};
+
+// get today notes by user
+exports.getTodayNotesByUser = async (req, res) => {
+  try {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const users = await User.find({}, "name email role");
+
+    const result = await Promise.all(
+      users.map(async (user) => {
+
+        const inquiries = await Inquiry.find({
+          notes: {
+            $elemMatch: {
+              addedBy: user._id,
+              createdAt: {
+                $gte: start,
+                $lte: end
+              }
+            }
+          }
+        });
+
+        const notesList = [];
+
+        inquiries.forEach((inq) => {
+
+          const todayNotes = inq.notes.filter(
+            (note) =>
+              note.addedBy?.toString() === user._id.toString() &&
+              note.createdAt >= start &&
+              note.createdAt <= end
+          );
+
+          todayNotes.forEach((note) => {
+            notesList.push({
+              inquiryId: inq._id,
+              inquiryName: inq.name,
+              mobileNumber: inq.mobileNumber,
+              schoolCollege: inq.schoolCollege,
+              note: note.note,
+              createdAt: note.createdAt
+            });
+          });
+        });
+
+        return {
+          userId: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          totalNotesToday: notesList.length,
+          notes: notesList
+        };
+      })
+    );
+
+    res.json(result);
+
+  } catch (err) {
+    res.status(500).json({
+      message: err.message
+    });
+  }
+};
 // export to Excel
 // exports.importExcel = async (req, res) => {
 //     try {

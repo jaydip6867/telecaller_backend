@@ -15,6 +15,33 @@ router.post(
   inquiryController.createInquiry
 );
 
+router.get("/today-followups", auth, inquiryController.getTodayFollowups);
+
+router.post(
+  "/import-excel",
+  auth,
+  upload.single("file"),
+  inquiryController.importExcel
+);
+
+router.get(
+  "/today-user-note-count",
+  auth,
+  inquiryController.getTodayUserNoteCount
+);
+
+router.get(
+  "/today-followups-by-user",
+  auth,
+  inquiryController.getTodayFollowupsByUser
+);
+
+router.get(
+  "/today-notes-by-user",
+  auth,
+  inquiryController.getTodayNotesByUser
+);
+
 router.get(
   "/",
   auth,
@@ -39,11 +66,6 @@ router.post(
   inquiryController.updateInquiry
 );
 
-router.post(
-  "/import-excel",
-  auth,
-  upload.single("file"),
-  inquiryController.importExcel
-);
+
 
 module.exports = router;
