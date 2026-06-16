@@ -34,6 +34,12 @@ router.get(
 );
 
 router.post(
+  "/:id",
+  auth,
+  inquiryController.updateInquiry
+);
+
+router.post(
   "/import-excel",
   auth,
   upload.single("file"),

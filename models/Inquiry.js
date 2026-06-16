@@ -36,6 +36,16 @@ const inquirySchema = new mongoose.Schema(
       required: true
     },
 
+    tution: {
+      type: String,
+      required: true
+    },
+
+    followUpDate: {
+      type: Date,
+      default: null
+    },
+
     status: {
       type: String,
       enum: [

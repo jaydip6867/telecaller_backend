@@ -33,9 +33,49 @@ exports.getAllInquiry = async (req, res) => {
 };
 
 // Add Followup Note
+// exports.addNote = async (req, res) => {
+//     try {
+//         const { note, status } = req.body;
+
+//         const inquiry = await Inquiry.findById(req.params.id);
+
+//         if (!inquiry) {
+//             return res.status(404).json({
+//                 message: "Inquiry not found"
+//             });
+//         }
+
+//         // 📝 add note
+//         inquiry.notes.push({
+//             note,
+//             addedBy: req.user.id
+//         });
+
+//         // 🔥 AUTO STATUS UPDATE LOGIC
+//         if (status) {
+//             inquiry.status = status;
+//         } else {
+//             // default logic if no status passed
+//             if (inquiry.status === "pending") {
+//                 inquiry.status = "in_calling";
+//             }
+//         }
+
+//         await inquiry.save();
+
+//         res.json(inquiry);
+
+//     } catch (err) {
+//         res.status(500).json({
+//             message: err.message
+//         });
+//     }
+// };
+
+// Add Followup Note
 exports.addNote = async (req, res) => {
     try {
-        const { note, status } = req.body;
+        const { note, status, followUpDate } = req.body;
 
         const inquiry = await Inquiry.findById(req.params.id);
 
@@ -46,19 +86,25 @@ exports.addNote = async (req, res) => {
         }
 
         // 📝 add note
-        inquiry.notes.push({
-            note,
-            addedBy: req.user.id
-        });
+        if (note) {
+            inquiry.notes.push({
+                note,
+                addedBy: req.user.id
+            });
+        }
 
-        // 🔥 AUTO STATUS UPDATE LOGIC
+        // 🔥 status update logic
         if (status) {
             inquiry.status = status;
         } else {
-            // default logic if no status passed
             if (inquiry.status === "pending") {
                 inquiry.status = "in_calling";
             }
+        }
+
+        // 📅 followUpDate update
+        if (followUpDate) {
+            inquiry.followUpDate = followUpDate;
         }
 
         await inquiry.save();
@@ -69,6 +115,56 @@ exports.addNote = async (req, res) => {
         res.status(500).json({
             message: err.message
         });
+    }
+};
+
+// Update Inquiry
+exports.updateInquiry = async (req, res) => {
+    try {
+
+        const {
+            name,
+            std,
+            mobileNumber,
+            schoolCollege,
+            tution,
+            status
+        } = req.body;
+
+        const inquiry = await Inquiry.findById(req.params.id);
+
+        if (!inquiry) {
+            return res.status(404).json({
+                message: "Inquiry not found"
+            });
+        }
+
+        inquiry.name = name || inquiry.name;
+        inquiry.std = std || inquiry.std;
+        inquiry.mobileNumber =
+            mobileNumber || inquiry.mobileNumber;
+        inquiry.schoolCollege =
+            schoolCollege || inquiry.schoolCollege;
+
+        inquiry.tution =
+            tution || inquiry.tution;
+
+        inquiry.status =
+            status || inquiry.status;
+
+        await inquiry.save();
+
+        res.json({
+            message: "Inquiry updated successfully",
+            inquiry
+        });
+
+    } catch (err) {
+
+        res.status(500).json({
+            message: err.message
+        });
+
     }
 };
 
@@ -195,6 +291,8 @@ exports.importExcel = async (req, res) => {
                     std: item.std,
                     mobileNumber: normalizeMobile(item.mobileNumber),
                     schoolCollege: item.schoolCollege,
+                    tution: '',
+                    followUpDate: '',
                     status: item.status || "pending",
                     notes: notesArray
                 };
