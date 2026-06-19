@@ -376,71 +376,71 @@ exports.getTodayFollowupsByUser = async (req, res) => {
 
 // get today notes by user
 exports.getTodayNotesByUser = async (req, res) => {
-  try {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+    try {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
 
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
 
-    const users = await User.find({}, "name email role");
+        const users = await User.find({}, "name email role");
 
-    const result = await Promise.all(
-      users.map(async (user) => {
+        const result = await Promise.all(
+            users.map(async (user) => {
 
-        const inquiries = await Inquiry.find({
-          notes: {
-            $elemMatch: {
-              addedBy: user._id,
-              createdAt: {
-                $gte: start,
-                $lte: end
-              }
-            }
-          }
+                const inquiries = await Inquiry.find({
+                    notes: {
+                        $elemMatch: {
+                            addedBy: user._id,
+                            createdAt: {
+                                $gte: start,
+                                $lte: end
+                            }
+                        }
+                    }
+                });
+
+                const notesList = [];
+
+                inquiries.forEach((inq) => {
+
+                    const todayNotes = inq.notes.filter(
+                        (note) =>
+                            note.addedBy?.toString() === user._id.toString() &&
+                            note.createdAt >= start &&
+                            note.createdAt <= end
+                    );
+
+                    todayNotes.forEach((note) => {
+                        notesList.push({
+                            inquiryId: inq._id,
+                            inquiryName: inq.name,
+                            mobileNumber: inq.mobileNumber,
+                            schoolCollege: inq.schoolCollege,
+                            note: note.note,
+                            createdAt: note.createdAt
+                        });
+                    });
+                });
+
+                return {
+                    userId: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    totalNotesToday: notesList.length,
+                    notes: notesList
+                };
+            })
+        );
+
+        res.json(result);
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message
         });
-
-        const notesList = [];
-
-        inquiries.forEach((inq) => {
-
-          const todayNotes = inq.notes.filter(
-            (note) =>
-              note.addedBy?.toString() === user._id.toString() &&
-              note.createdAt >= start &&
-              note.createdAt <= end
-          );
-
-          todayNotes.forEach((note) => {
-            notesList.push({
-              inquiryId: inq._id,
-              inquiryName: inq.name,
-              mobileNumber: inq.mobileNumber,
-              schoolCollege: inq.schoolCollege,
-              note: note.note,
-              createdAt: note.createdAt
-            });
-          });
-        });
-
-        return {
-          userId: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          totalNotesToday: notesList.length,
-          notes: notesList
-        };
-      })
-    );
-
-    res.json(result);
-
-  } catch (err) {
-    res.status(500).json({
-      message: err.message
-    });
-  }
+    }
 };
 // export to Excel
 // exports.importExcel = async (req, res) => {
@@ -494,6 +494,12 @@ exports.importExcel = async (req, res) => {
     try {
         const fs = require("fs");
         const XLSX = require("xlsx");
+
+        if (!req.file) {
+            return res.status(400).json({
+                message: "File not received. Check multer field name."
+            });
+        }
 
         const workbook = XLSX.readFile(req.file.path);
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
