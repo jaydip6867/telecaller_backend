@@ -538,11 +538,15 @@ exports.importExcel = async (req, res) => {
             .map(item => {
                 let notesArray = [];
 
-                if (item.notes) {
-                    notesArray = item.notes.split("|").map(n => ({
-                        note: n.trim(),
-                        addedBy: req.user.id
-                    }));
+                if (item.notes && item.notes.trim() !== "") {
+                    notesArray = item.notes
+                        .split("|")
+                        .map(n => n.trim())
+                        .filter(n => n !== "")   // 👈 remove empty notes
+                        .map(n => ({
+                            note: n,
+                            addedBy: req.user.id
+                        }));
                 }
 
                 return {
