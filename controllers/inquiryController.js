@@ -490,94 +490,204 @@ exports.getTodayNotesByUser = async (req, res) => {
 //     }
 // };
 
+const fs = require("fs");
+const XLSX = require("xlsx");
 exports.importExcel = async (req, res) => {
     try {
-        const fs = require("fs");
-        const XLSX = require("xlsx");
 
         if (!req.file) {
             return res.status(400).json({
-                message: "File not received. Check multer field name."
+                success: false,
+                message: "Excel file not received"
             });
         }
 
-        const workbook = XLSX.readFile(req.file.path);
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        // Read directly from memory buffer
+        const workbook = XLSX.read(req.file.buffer, {
+            type: "buffer"
+        });
+
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
 
         const data = XLSX.utils.sheet_to_json(sheet);
 
-        // 🔥 Normalize function
+        if (!data.length) {
+            return res.status(400).json({
+                success: false,
+                message: "Excel file is empty"
+            });
+        }
+
+        // Normalize mobile number
         const normalizeMobile = (num) => {
             if (!num) return "";
+
             return String(num)
-                .replace(/\D/g, "")   // only digits
+                .replace(/\D/g, "")
                 .trim();
         };
 
-        // Step 1: normalize Excel numbers
-        const mobileNumbers = data
-            .map(item => normalizeMobile(item.mobileNumber))
-            .filter(Boolean);
-
-        // Step 2: DB existing numbers also normalize
+        // Existing mobile numbers from DB
         const existingInquiries = await Inquiry.find(
             {},
             { mobileNumber: 1 }
         );
 
         const existingNumbersSet = new Set(
-            existingInquiries.map(i => normalizeMobile(i.mobileNumber))
+            existingInquiries.map((item) =>
+                normalizeMobile(item.mobileNumber)
+            )
         );
 
-        // Step 3: filter duplicates correctly
-        const inquiries = data
-            .filter(item => {
-                const mobile = normalizeMobile(item.mobileNumber);
-                return mobile && !existingNumbersSet.has(mobile);
-            })
-            .map(item => {
-                let notesArray = [];
+        const inquiries = [];
 
-                if (item.notes && item.notes.trim() !== "") {
-                    notesArray = item.notes
-                        .split("|")
-                        .map(n => n.trim())
-                        .filter(n => n !== "")   // 👈 remove empty notes
-                        .map(n => ({
-                            note: n,
-                            addedBy: req.user.id
-                        }));
-                }
+        for (const item of data) {
 
-                return {
-                    name: item.name,
-                    std: item.std,
-                    mobileNumber: normalizeMobile(item.mobileNumber),
-                    schoolCollege: item.schoolCollege,
-                    tution: '',
-                    followUpDate: '',
-                    status: item.status || "pending",
-                    notes: notesArray
-                };
+            const mobile = normalizeMobile(item.mobileNumber);
+
+            if (!mobile) continue;
+
+            if (existingNumbersSet.has(mobile)) {
+                continue;
+            }
+
+            let notesArray = [];
+
+            if (
+                item.notes &&
+                String(item.notes).trim() !== ""
+            ) {
+                notesArray = String(item.notes)
+                    .split("|")
+                    .map((note) => note.trim())
+                    .filter(Boolean)
+                    .map((note) => ({
+                        note,
+                        addedBy: req.user.id
+                    }));
+            }
+
+            inquiries.push({
+                name: item.name || "",
+                std: item.std || "",
+                mobileNumber: mobile,
+                schoolCollege: item.schoolCollege || "",
+                tution: "",
+                followUpDate: "",
+                status: item.status || "pending",
+                notes: notesArray
             });
+
+            existingNumbersSet.add(mobile);
+        }
 
         if (inquiries.length > 0) {
             await Inquiry.insertMany(inquiries);
         }
 
-        res.json({
-            message: "Excel imported successfully (duplicates skipped)",
+        return res.status(200).json({
+            success: true,
+            message: "Excel imported successfully",
+            totalRows: data.length,
             inserted: inquiries.length,
             skipped: data.length - inquiries.length
         });
 
-    } catch (err) {
-        res.status(500).json({
-            message: err.message
+    } catch (error) {
+
+        console.error("IMPORT ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
         });
-    } finally {
-        if (req.file?.path && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
     }
 };
+// exports.importExcel = async (req, res) => {
+//     try {
+
+//         if (req.file?.path && fs.existsSync(req.file.path)) {
+//             fs.unlinkSync(req.file.path);
+//         }
+
+//         const workbook = XLSX.readFile(req.file.path);
+//         const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+//         const data = XLSX.utils.sheet_to_json(sheet);
+
+//         // 🔥 Normalize function
+//         const normalizeMobile = (num) => {
+//             if (!num) return "";
+//             return String(num)
+//                 .replace(/\D/g, "")   // only digits
+//                 .trim();
+//         };
+
+//         // Step 1: normalize Excel numbers
+//         const mobileNumbers = data
+//             .map(item => normalizeMobile(item.mobileNumber))
+//             .filter(Boolean);
+
+//         // Step 2: DB existing numbers also normalize
+//         const existingInquiries = await Inquiry.find(
+//             {},
+//             { mobileNumber: 1 }
+//         );
+
+//         const existingNumbersSet = new Set(
+//             existingInquiries.map(i => normalizeMobile(i.mobileNumber))
+//         );
+
+//         // Step 3: filter duplicates correctly
+//         const inquiries = data
+//             .filter(item => {
+//                 const mobile = normalizeMobile(item.mobileNumber);
+//                 return mobile && !existingNumbersSet.has(mobile);
+//             })
+//             .map(item => {
+//                 let notesArray = [];
+
+//                 if (item.notes && item.notes.trim() !== "") {
+//                     notesArray = item.notes
+//                         .split("|")
+//                         .map(n => n.trim())
+//                         .filter(n => n !== "")   // 👈 remove empty notes
+//                         .map(n => ({
+//                             note: n,
+//                             addedBy: req.user.id
+//                         }));
+//                 }
+
+//                 return {
+//                     name: item.name,
+//                     std: item.std,
+//                     mobileNumber: normalizeMobile(item.mobileNumber),
+//                     schoolCollege: item.schoolCollege,
+//                     tution: '',
+//                     followUpDate: '',
+//                     status: item.status || "pending",
+//                     notes: notesArray
+//                 };
+//             });
+
+//         if (inquiries.length > 0) {
+//             await Inquiry.insertMany(inquiries);
+//         }
+
+//         res.json({
+//             message: "Excel imported successfully (duplicates skipped)",
+//             inserted: inquiries.length,
+//             skipped: data.length - inquiries.length
+//         });
+
+//     } catch (err) {
+//         res.status(500).json({
+//             message: err.message
+//         });
+//     } finally {
+//         if (req.file?.path && fs.existsSync(req.file.path)) {
+//             fs.unlinkSync(req.file.path);
+//         }
+//     }
+// };
